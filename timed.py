@@ -11,6 +11,7 @@ from inference import Inference
 from selection import Selector
 from collections import defaultdict
 from typing import Optional
+import selection
 
 # Create a FastAPI instance
 app = FastAPI()
@@ -68,7 +69,10 @@ async def create_mapping(input: List[Input]):
 
         # Record the inference start time for this ship
         inference_start_time = time.time()
-        
+
+         ##########################################
+        # begin inference
+       
         # Run inference
         directory = 'checkpoint_epoch40'
         pattern = 'checkpoint-*'
@@ -77,6 +81,54 @@ async def create_mapping(input: List[Input]):
         infer = Inference(checkpoint_path)
         infer.prepare_dataloader(df, batch_size=64, max_length=64)
         thing_prediction_list, property_prediction_list = infer.generate()
+
+        # %%
+        # add labels too
+        # thing_actual_list, property_actual_list = decode_preds(pred_labels)
+        # Convert the list to a Pandas DataFrame
+        df_out = pd.DataFrame({
+            'p_thing': thing_prediction_list, 
+            'p_property': property_prediction_list
+        })
+        # df_out['p_thing_correct'] = df_out['p_thing'] == df_out['thing']
+        # df_out['p_property_correct'] = df_out['p_property'] == df_out['property']
+        df = pd.concat([df, df_out], axis=1)
+
+        ##########################################
+        # begin selection
+
+        # we start to cull predictions from here
+        data_master_path = f"data_files/data_model_master_export.csv"
+        df_master = pd.read_csv(data_master_path, skipinitialspace=True)
+        data_mapping = df
+        # Generate patterns    
+        df_master['master_pattern'] = df_master['thing'] + " " + df_master['property']    
+        # Create a set of unique patterns from master for fast lookup    
+        master_patterns = set(df_master['master_pattern'])
+        thing_patterns = set(df_master['thing'])
+
+        # check if prediction is in MDM
+        data_mapping['p_thing_pattern'] = data_mapping['p_thing'].str.replace(r'\d', '#', regex=True)
+        data_mapping['p_property_pattern'] = data_mapping['p_property'].str.replace(r'\d', '#', regex=True)
+        data_mapping['p_pattern'] = data_mapping['p_thing_pattern'] + " " + data_mapping['p_property_pattern']
+        data_mapping['p_MDM'] = data_mapping['p_pattern'].apply(lambda x: x in master_patterns)    
+
+        df = data_mapping
+
+        # get target data
+        data_path = "data_files/train.csv"
+        train_df = pd.read_csv(data_path, skipinitialspace=True)
+        # processing to help with selection later
+        train_df['thing_property'] = train_df['thing'] + " " + train_df['property']
+
+        import selection
+
+        selector = selection.Selector(input_df=df, reference_df=train_df)
+        thing_prediction_list, property_prediction_list = selector.run_selection(checkpoint_path=checkpoint_path)
+
+
+        ##########################################
+        # end of inference + selection
 
         # Record the inference end time for this ship
         inference_end_time = time.time()

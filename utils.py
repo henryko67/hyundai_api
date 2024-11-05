@@ -3,6 +3,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 from transformers import AutoModelForSeq2SeqLM
 import torch.nn.functional as F
+from tqdm import tqdm
 
 
 
@@ -12,14 +13,14 @@ class Retriever:
         self.embeddings = []
         self.inputs = input_texts
         model_checkpoint = model_checkpoint 
-        self.tokenizer = AutoTokenizer.from_pretrained("t5-base", return_tensors="pt", clean_up_tokenization_spaces=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, return_tensors="pt", clean_up_tokenization_spaces=True)
         # define additional special tokens
         additional_special_tokens = ["<thing_start>", "<thing_end>", "<property_start>", "<property_end>", "<name>", "<desc>", "<sig>", "<unit>", "<data_type>"]
         # add the additional special tokens to the tokenizer
         self.tokenizer.add_special_tokens({"additional_special_tokens": additional_special_tokens})
 
         model = AutoModelForSeq2SeqLM.from_pretrained(model_checkpoint)
-        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # device = "cpu"
         model.to(self.device)
         self.model = model.eval()
@@ -31,7 +32,7 @@ class Retriever:
         all_embeddings = self.embeddings
         input_texts = self.inputs
 
-        for i in range(0, len(input_texts), batch_size):
+        for i in tqdm(range(0, len(input_texts), batch_size)):
             batch_texts = input_texts[i:i+batch_size]
             # Tokenize the input text
             inputs = self.tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True, max_length=128)
@@ -62,7 +63,7 @@ def cosine_similarity_chunked(batch1, batch2, chunk_size=16):
     cos_sim = torch.empty(batch1_size, batch2_size, device=batch1.device)
 
     # Process batch1 in chunks
-    for i in range(0, batch1_size, chunk_size):
+    for i in tqdm(range(0, batch1_size, chunk_size)):
         batch1_chunk = batch1[i:i + chunk_size]  # Get chunk of batch1
         
         # Expand batch1 chunk and entire batch2 for comparison
