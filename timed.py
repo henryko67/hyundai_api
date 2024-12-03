@@ -7,14 +7,23 @@ from torch.utils.data import DataLoader
 import pandas as pd
 import os
 import glob
-from inference import Inference
-from selection import Selector
+from run_end_to_end import run_end_to_end
 from collections import defaultdict
 from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
 import selection
 
 # Create a FastAPI instance
 app = FastAPI()
+
+# Allow requests from any origin when developing with ngrok
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust as needed for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Define Pydantic models
 class Data(BaseModel):
@@ -56,103 +65,79 @@ async def create_mapping(input: List[Input]):
 
     # Variable to accumulate inference time across all ships
     total_inference_time = 0
+    inference_start_time = time.time()
+
+    global_train_embed = None
     
-    # Iterate over each ship in the input list
+    # cache here
+    #####
+    # code here
+    #####
+    df_list = []
+    # create combined dataframe such that ships_idx is intruded into the ship_data_list
+    for ship in input:
+        ships_idx = ship.ships_idx
+
+        # i need the data to be a single df
+        data = [{
+            'index': data.index,
+            'tag_description': data.tag_description,
+            'unit': data.unit,
+            'ships_idx': ships_idx, 
+            } 
+            for data in ship.ship_data_list]
+        df = pd.DataFrame(data)
+
+        df_list.append(df)
+
+    df = pd.concat(df_list, axis=0)
+    df = df.reset_index()
+ 
+
+        
+    ###############################
+    # start of inference + process
+    df = run_end_to_end(df)
+
+    # Record the inference end time for this ship
+    inference_end_time = time.time()
+
+    # Calculate inference time for this ship and add to the total inference time
+    total_inference_time = inference_end_time - inference_start_time 
+
+
+    ###############################
+    # extract the result back to each ship
+
+    ##########################################
+    # end of inference + selection
+
     for ship in input:
         ships_idx = ship.ships_idx
         result = results_by_ship[ships_idx]
-        result["ships_idx"] = ships_idx
+        result['ships_idx'] = ships_idx
+        
+        # subset df based on ship
+        ship_mask = (df['ships_idx'] == ships_idx)
+        ship_df = df[ship_mask].reset_index(drop=True)
 
-        # Convert ship_data_list into dataframe for the model
-        data = [{'tag_description': data.tag_description, 'ships_idx': ships_idx} for data in ship.ship_data_list]
-        df = pd.DataFrame(data)
+        for i, row in ship_df.iterrows():
+            index = row['index']
+            thing = row['p_thing']
+            property = row['p_property']
 
-        # Record the inference start time for this ship
-        inference_start_time = time.time()
-
-         ##########################################
-        # begin inference
-       
-        # Run inference
-        directory = 'checkpoint_epoch40'
-        pattern = 'checkpoint-*'
-        checkpoint_path = glob.glob(os.path.join(directory, pattern))[0]
-
-        infer = Inference(checkpoint_path)
-        infer.prepare_dataloader(df, batch_size=64, max_length=64)
-        thing_prediction_list, property_prediction_list = infer.generate()
-
-        # %%
-        # add labels too
-        # thing_actual_list, property_actual_list = decode_preds(pred_labels)
-        # Convert the list to a Pandas DataFrame
-        df_out = pd.DataFrame({
-            'p_thing': thing_prediction_list, 
-            'p_property': property_prediction_list
-        })
-        # df_out['p_thing_correct'] = df_out['p_thing'] == df_out['thing']
-        # df_out['p_property_correct'] = df_out['p_property'] == df_out['property']
-        df = pd.concat([df, df_out], axis=1)
-
-        ##########################################
-        # begin selection
-
-        # we start to cull predictions from here
-        data_master_path = f"data_files/data_model_master_export.csv"
-        df_master = pd.read_csv(data_master_path, skipinitialspace=True)
-        data_mapping = df
-        # Generate patterns    
-        df_master['master_pattern'] = df_master['thing'] + " " + df_master['property']    
-        # Create a set of unique patterns from master for fast lookup    
-        master_patterns = set(df_master['master_pattern'])
-        thing_patterns = set(df_master['thing'])
-
-        # check if prediction is in MDM
-        data_mapping['p_thing_pattern'] = data_mapping['p_thing'].str.replace(r'\d', '#', regex=True)
-        data_mapping['p_property_pattern'] = data_mapping['p_property'].str.replace(r'\d', '#', regex=True)
-        data_mapping['p_pattern'] = data_mapping['p_thing_pattern'] + " " + data_mapping['p_property_pattern']
-        data_mapping['p_MDM'] = data_mapping['p_pattern'].apply(lambda x: x in master_patterns)    
-
-        df = data_mapping
-
-        # get target data
-        data_path = "data_files/train.csv"
-        train_df = pd.read_csv(data_path, skipinitialspace=True)
-        # processing to help with selection later
-        train_df['thing_property'] = train_df['thing'] + " " + train_df['property']
-
-        import selection
-
-        selector = selection.Selector(input_df=df, reference_df=train_df)
-        thing_prediction_list, property_prediction_list = selector.run_selection(checkpoint_path=checkpoint_path)
-
-
-        ##########################################
-        # end of inference + selection
-
-        # Record the inference end time for this ship
-        inference_end_time = time.time()
-
-        # Calculate inference time for this ship and add to the total inference time
-        inference_time_for_ship = inference_end_time - inference_start_time
-        total_inference_time += inference_time_for_ship
-
-        # Map predictions back to the input data and assign to result
-        for i, data in enumerate(ship.ship_data_list):
-            thing = thing_prediction_list[i] if i < len(thing_prediction_list) else None
-            property_ = property_prediction_list[i] if i < len(property_prediction_list) else None
-
-            # Check if 'thing' or 'property' is None
-            if thing is None or property_ is None:
-                result["unmapped_indices"].append(data.index)  # Add index to unmapped
+            if (thing is None) or (property is None):
+                result['unmapped_indices'].append(index)
             else:
                 result["platform_data_list"].append(
-                    ThingProperty(index=data.index, thing=thing, property=property_)
+                    ThingProperty(index=index, thing=thing, property=property)
                 )
-    
+
+
+
+    # record total time
     # Record the total end time
     total_end_time = time.time()
-
     # Calculate total API call time
     total_api_time = total_end_time - total_start_time
 

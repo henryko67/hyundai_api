@@ -55,23 +55,34 @@ class Retriever:
 
         self.embeddings = all_embeddings
 
-def cosine_similarity_chunked(batch1, batch2, chunk_size=16):
+
+def cosine_similarity_chunked(batch1, batch2, chunk_size=1024):
+    device = 'cuda'
     batch1_size = batch1.size(0)
     batch2_size = batch2.size(0)
+    batch2.to(device)
     
     # Prepare an empty tensor to store results
-    cos_sim = torch.empty(batch1_size, batch2_size, device=batch1.device)
+    cos_sim = torch.empty(batch1_size, batch2_size, device=device)
 
     # Process batch1 in chunks
-    for i in tqdm(range(0, batch1_size, chunk_size)):
+    for i in range(0, batch1_size, chunk_size):
         batch1_chunk = batch1[i:i + chunk_size]  # Get chunk of batch1
         
+        batch1_chunk.to(device)
         # Expand batch1 chunk and entire batch2 for comparison
-        batch1_chunk_exp = batch1_chunk.unsqueeze(1)  # Shape: (chunk_size, 1, seq_len)
-        batch2_exp = batch2.unsqueeze(0)  # Shape: (1, batch2_size, seq_len)
+        # batch1_chunk_exp = batch1_chunk.unsqueeze(1)  # Shape: (chunk_size, 1, seq_len)
+        # batch2_exp = batch2.unsqueeze(0)  # Shape: (1, batch2_size, seq_len)
+        batch2_norms = batch2.norm(dim=1, keepdim=True)
+
         
         # Compute cosine similarity for the chunk and store it in the final tensor
-        cos_sim[i:i + chunk_size] = F.cosine_similarity(batch1_chunk_exp, batch2_exp, dim=-1)
+        # cos_sim[i:i + chunk_size] = F.cosine_similarity(batch1_chunk_exp, batch2_exp, dim=-1)
+
+        # Compute cosine similarity by matrix multiplication and normalizing
+        sim_chunk = torch.mm(batch1_chunk, batch2.T) / (batch1_chunk.norm(dim=1, keepdim=True) * batch2_norms.T + 1e-8)
+        
+        # Store the results in the appropriate part of the final tensor
+        cos_sim[i:i + chunk_size] = sim_chunk
     
     return cos_sim
-

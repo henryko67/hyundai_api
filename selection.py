@@ -3,16 +3,19 @@ import numpy as np
 from typing import List
 from tqdm import tqdm
 from utils import Retriever, cosine_similarity_chunked
+import numpy.typing as npt
 
 class Selector():
     input_df: pd.DataFrame
     reference_df: pd.DataFrame
     ships_list: List[int]
+    global_train_embed: npt.NDArray[np.float32] | None
 
-    def __init__(self, input_df, reference_df):
+    def __init__(self, input_df, reference_df, global_train_embed):
         self.ships_list = sorted(list(set(input_df['ships_idx'])))
         self.input_df = input_df.copy()
         self.reference_df = reference_df.copy()
+        self.global_train_embed = global_train_embed
 
 
     def run_selection(self, checkpoint_path):
@@ -57,11 +60,13 @@ class Selector():
 
         # print('create embeddings for train_data')
         # prepare reference embed
-        train_data = list(generate_input_list(self.reference_df))
-        # Define the directory and the pattern
-        retriever_train = Retriever(train_data, checkpoint_path)
-        retriever_train.make_mean_embedding(batch_size=64)
-        train_embed = retriever_train.embeddings
+        if (self.global_train_embed == None):
+            train_data = list(generate_input_list(self.reference_df))
+            # Define the directory and the pattern
+            retriever_train = Retriever(train_data, checkpoint_path)
+            retriever_train.make_mean_embedding(batch_size=64)
+            train_embed = retriever_train.embeddings
+            self.global_train_embed = train_embed
 
         # take the inputs for df_sub
         # print('create embeddings for train_data')
@@ -75,7 +80,7 @@ class Selector():
         # we subset these embeddings by applying masks to them
 
 
-        THRESHOLD = 0.0
+        THRESHOLD = 0.90
         # print(self.ships_list)
         for ship_idx in self.ships_list:
             # print("ship: ", ship_idx)

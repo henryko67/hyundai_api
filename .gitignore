@@ -5,3 +5,7 @@ output*
 *Zone.Identifier
 test_all.csv
 data_files
+*.zip
+test_jsons
+*.json
+cache.db
