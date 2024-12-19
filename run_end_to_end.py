@@ -5,15 +5,16 @@ import glob
 from end_to_end.mapper import Mapper
 from end_to_end.preprocess import Abbreviator
 from end_to_end.deduplication import run_deduplication
+from end_to_end.rule_based_correction import Corrector
 
 # global config
 BATCH_SIZE = 256
 
 
 def run_end_to_end(df):
-    current_directory = (os.getcwd())
-    if ('end_to_end' not in current_directory):
-        os.chdir('./end_to_end')
+    # current_directory = (os.getcwd())
+    # if ('end_to_end' not in current_directory):
+    #     os.chdir('./end_to_end')
 
     # pre-process data
     abbreviator = Abbreviator(df)
@@ -24,7 +25,7 @@ def run_end_to_end(df):
     # run mapping
     # checkpoint
     # Use glob to find matching paths
-    checkpoint_path = 'models/mapping_model'
+    checkpoint_path = 'end_to_end/models/mapping_model'
     mapper = Mapper(checkpoint_path)
     mapper.prepare_dataloader(df, batch_size=BATCH_SIZE, max_length=128)
     thing_prediction_list, property_prediction_list = mapper.generate()
@@ -40,11 +41,18 @@ def run_end_to_end(df):
     # df_out['p_property_correct'] = df_out['p_property'] == df_out['property']
     df = pd.concat([df, df_out], axis=1)
 
+    # %%
+    ###################################
+    # run rule-based correction
+    # you can remove this if results become abnormally bad
+    # corrector = Corrector(df)
+    # df = corrector.run_correction()
+
 
     # %%
     ####################################
     # run de_duplication with thresholding
-    data_path = "train_all.csv"
+    data_path = "end_to_end/train_all.csv"
     train_df = pd.read_csv(data_path, skipinitialspace=True)
     train_df['mapping'] = train_df['thing'] + " " + train_df['property']
 

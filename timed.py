@@ -64,7 +64,6 @@ async def create_mapping(input: List[Input]):
     results_by_ship = defaultdict(lambda: {"ships_idx": 0, "platform_data_list": [], "unmapped_indices": []})
 
     # Variable to accumulate inference time across all ships
-    total_inference_time = 0
     inference_start_time = time.time()
 
     global_train_embed = None

@@ -236,7 +236,7 @@ def run_deduplication(
 
     # TODO: replace this with a list of values to import
     # too wasteful to just import everything
-    data_path = 'data_mapping_mdm.csv'
+    data_path = 'end_to_end/data_mapping_mdm.csv'
     full_df = pd.read_csv(data_path, skipinitialspace=True)
     full_df['mapping'] = full_df['thing'] + ' ' + full_df['property']
     full_mdm_mapping_list = sorted(list((set(full_df['mapping']))))
@@ -247,15 +247,15 @@ def run_deduplication(
     df['p_mapping'] = df['p_thing'] + " " + df['p_property']
 
     # get target data
-    data_path = "train_all.csv"
+    data_path = "end_to_end/train_all.csv"
     train_df = pd.read_csv(data_path, skipinitialspace=True)
     train_df['mapping'] = train_df['thing'] + " " + train_df['property']
 
     # generate your embeddings
-    checkpoint_path = 'models/bert_model'
+    checkpoint_path = 'end_to_end/models/bert_model'
 
     # cache embeddings
-    file_path = "train_embeds.pt"
+    file_path = "end_to_end/train_embeds.pt"
     if os.path.exists(file_path):
         # Load the tensor if the file exists
         tensor = torch.load(file_path, weights_only=True)
