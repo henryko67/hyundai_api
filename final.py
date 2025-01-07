@@ -36,10 +36,10 @@ class Data(BaseModel):
     tx_period: int
     tx_type: int
     on_change_yn: bool     # Changed to bool
-    scaling_const: int
+    scaling_const: float
     signal_type: str
-    min: int
-    max: int
+    min: float
+    max: float
     unit: str
     data_type: int
 
