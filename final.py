@@ -99,6 +99,7 @@ async def create_mapping(input: List[Input]):
     ###############################
     # start of inference + process
     df = run_end_to_end(df)
+    torch.cuda.empty_cache()
 
     # Record the inference end time for this ship
     inference_end_time = time.time()
@@ -231,6 +232,7 @@ async def create_mapping(input: List[Input]):
         to_infer_df = pd.DataFrame(to_infer)
         to_infer_df = pd.DataFrame(to_infer).reset_index(drop=True)
         inferred_df = run_end_to_end(to_infer_df)
+        torch.cuda.empty_cache()
 
         # Update cache and append inference results
         for _, row in inferred_df.iterrows():
