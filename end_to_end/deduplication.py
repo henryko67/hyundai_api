@@ -427,6 +427,7 @@ def run_deduplication(
     #     print(f'Precision: {precision:.5f}')
     #     print(f'Recall: {recall:.5f}')
 
+    torch.cuda.empty_cache()
 
     return df
 
